@@ -28,7 +28,7 @@ module.exports = {
         if (!suggestionsChannel) {
             return await interaction.reply({ 
                 content: '❌ Canal de sugestões não encontrado. Contate um administrador.', 
-                ephemeral: true 
+                flags: 64 // Substitui ephemeral: true
             });
         }
 
@@ -91,14 +91,14 @@ module.exports = {
 
             await interaction.reply({ 
                 content: `✅ Sugestão enviada com sucesso! Confira em ${suggestionsChannel}`, 
-                ephemeral: true 
+                flags: 64 // Substitui ephemeral: true
             });
 
         } catch (error) {
             console.error('Erro ao enviar sugestão:', error);
             await interaction.reply({ 
                 content: '❌ Erro ao enviar sugestão. Tente novamente.', 
-                ephemeral: true 
+                flags: 64 // Substitui ephemeral: true
             });
         }
     }
