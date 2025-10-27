@@ -18,6 +18,7 @@ module.exports = {
             
             // Carregar todos os comandos
             const commandFiles = fs.readdirSync(commandsPath).filter(file => file.endsWith('.js'));
+            console.log(`📁 Arquivos encontrados na pasta commands: ${commandFiles.join(', ')}`);
             
             for (const file of commandFiles) {
                 const filePath = path.join(commandsPath, file);
@@ -27,6 +28,8 @@ module.exports = {
                     if (command.data && command.data.name) {
                         commands.push(command.data.toJSON());
                         console.log(`📋 Comando ${command.data.name} adicionado para registro`);
+                    } else {
+                        console.log(`⚠️  Arquivo ${file} não tem data válida`);
                     }
                 } catch (error) {
                     console.error(`❌ Erro ao carregar comando ${file}:`, error);
@@ -53,13 +56,14 @@ module.exports = {
         } catch (error) {
             console.error('❌ Erro ao registrar comandos:', error);
             
-            // Log mais detalhado do erro
             if (error.code === 50001) {
                 console.error('❌ Missing Access - Verifique se o bot tem permissão de "Applications Commands"');
             } else if (error.code === 50013) {
                 console.error('❌ Missing Permissions - Verifique as permissões do bot');
             } else if (error.code === 40060) {
                 console.error('❌ Application not verified - Bot precisa ser verificado para mais de 100 servidores');
+            } else {
+                console.error('❌ Erro desconhecido:', error.message);
             }
         }
     }
