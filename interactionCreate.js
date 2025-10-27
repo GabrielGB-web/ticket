@@ -11,19 +11,49 @@ const {
     TextInputStyle 
 } = require('discord.js');
 
-const ticketDB = new Map(); // Em produção, use um banco de dados real
+const ticketDB = new Map();
 
 module.exports = {
     name: 'interactionCreate',
     async execute(interaction) {
+        console.log(`🔹 Interação recebida: ${interaction.type} | ${interaction.customId || interaction.commandName}`);
+
+        // Comandos de slash
+        if (interaction.isChatInputCommand()) {
+            const command = interaction.client.commands.get(interaction.commandName);
+
+            if (!command) {
+                console.log(`❌ Comando não encontrado: ${interaction.commandName}`);
+                return await interaction.reply({ 
+                    content: '❌ Comando não encontrado!', 
+                    ephemeral: true 
+                });
+            }
+
+            try {
+                console.log(`▶️ Executando comando: ${interaction.commandName}`);
+                await command.execute(interaction);
+                console.log(`✅ Comando executado: ${interaction.commandName}`);
+            } catch (error) {
+                console.error(`❌ Erro ao executar comando ${interaction.commandName}:`, error);
+                await interaction.reply({ 
+                    content: '❌ Ocorreu um erro ao executar este comando!', 
+                    ephemeral: true 
+                });
+            }
+            return;
+        }
+
         // Botão fixo para abrir menu de tickets
         if (interaction.isButton() && interaction.customId === 'open-ticket-menu') {
             await handleTicketMenu(interaction);
+            return;
         }
 
         // Menu de seleção de tipo de ticket
         if (interaction.isStringSelectMenu() && interaction.customId === 'ticket-select') {
             await handleTicketCreation(interaction);
+            return;
         }
 
         // Botões dentro do ticket
@@ -35,12 +65,16 @@ module.exports = {
             'transcript-ticket'
         ].includes(interaction.customId)) {
             await handleTicketButtons(interaction);
+            return;
         }
 
         // Modal para adicionar membro
         if (interaction.isModalSubmit() && interaction.customId === 'add-member-modal') {
             await handleAddMemberModal(interaction);
+            return;
         }
+    }
+};
 
         // Comandos de slash
         if (interaction.isChatInputCommand()) {
