@@ -75,12 +75,6 @@ module.exports = {
             return;
         }
 
-        // Botão para sugerir
-        if (interaction.isButton() && interaction.customId === 'suggest-button') {
-            await handleSuggestionModal(interaction);
-            return;
-        }
-
         // Botões de votação nas sugestões
         if (interaction.isButton() && [
             'suggestion-upvote',
@@ -96,18 +90,20 @@ module.exports = {
 
 async function handleTicketMenu(interaction) {
     const embed = new EmbedBuilder()
-        .setTitle('🎫 Sistema de Atendimento')
-        .setDescription('Escolha abaixo o tipo de atendimento que você precisa:')
+        .setTitle('🎫 Sistema de Tickets')
+        .setDescription('Selecione abaixo o tipo de ticket que deseja abrir:')
         .setColor(0x0099FF)
         .addFields(
-            { name: '🎫 Tickets', value: 'Atendimento personalizado com a equipe', inline: true },
-            { name: '💡 Sugestões', value: 'Envie e vote em sugestões', inline: true }
+            { name: '🚨 Denúncias', value: 'Fazer denúncia ou recorrer a uma denúncia' },
+            { name: '❓ Suporte', value: 'Tirar dúvidas ou recorrer a banimento de anti cheat' },
+            { name: '🛒 Loja', value: 'Assuntos sobre compra na loja' },
+            { name: '👑 Falar com CEO', value: 'Comunicação direta com a administração' }
         )
-        .setFooter({ text: 'Selecione uma opção no menu abaixo' });
+        .setFooter({ text: 'Clique no menu abaixo para selecionar' });
 
     const selectMenu = new StringSelectMenuBuilder()
         .setCustomId('ticket-select')
-        .setPlaceholder('Selecione o tipo de atendimento')
+        .setPlaceholder('Selecione o tipo de ticket')
         .addOptions([
             {
                 label: 'Denúncias',
@@ -132,12 +128,6 @@ async function handleTicketMenu(interaction) {
                 description: 'Comunicação direta com a administração',
                 value: 'ceo',
                 emoji: '👑'
-            },
-            {
-                label: 'Sugestão',
-                description: 'Enviar uma sugestão para o servidor',
-                value: 'sugestao',
-                emoji: '💡'
             }
         ]);
 
@@ -151,13 +141,7 @@ async function handleTicketCreation(interaction) {
     const user = interaction.user;
     const guild = interaction.guild;
 
-    // Se for sugestão, redireciona para o sistema de sugestões
-    if (selectedOption === 'sugestao') {
-        await handleSuggestionButton(interaction);
-        return;
-    }
-
-    // CONFIGURAÇÃO DOS CARGOS E CANAIS - ALTERE OS IDs AQUI!
+    // CONFIGURAÇÃO DOS CARGOS E CANAL DE TRANSCRIPT - ALTERE OS IDs AQUI!
     const ticketConfigs = {
         denuncias: {
             name: '🚨・denúncia',
@@ -198,16 +182,15 @@ async function handleTicketCreation(interaction) {
             categoryName: '👑 CEO',
             staffRole: 'CEO',
             staffRoleIds: [
-                '1330959853644025858', // ← CEO
-                '1330959853644025864'  // ← Diretor Geral
+                '1330959853644025858',  // ← CEO
+                '1330959853644025864' // ← Diretor Geral
             ],
             color: 0xFFD700
         }
     };
 
-    // IDs DOS CANAIS - ALTERE ESTES IDs!
+    // ID do canal para salvar transcripts - ALTERE ESTE ID!
     const TRANSCRIPT_CHANNEL_ID = '1330959870425567262'; // ← ID do canal de transcripts
-    const SUGGESTIONS_CHANNEL_ID = '1330959861915058317'; // ← ID do canal de sugestões
 
     const config = ticketConfigs[selectedOption];
 
@@ -362,132 +345,7 @@ async function handleTicketCreation(interaction) {
     }
 }
 
-// SISTEMA DE SUGESTÕES
-async function handleSuggestionButton(interaction) {
-    const embed = new EmbedBuilder()
-        .setTitle('💡 Sistema de Sugestões')
-        .setDescription('Clique no botão abaixo para enviar uma sugestão para o servidor!')
-        .addFields(
-            { name: '📝 Como funciona?', value: '• Sua sugestão será enviada para o canal de sugestões\n• A comunidade poderá votar 👍/👎\n• A staff irá analisar as mais votadas', inline: false },
-            { name: '💡 Dicas', value: '• Seja claro e objetivo\n• Explique os benefícios da sugestão\n• Verifique se já não foi sugerido antes', inline: false }
-        )
-        .setColor(0x9B59B6)
-        .setFooter({ text: 'Sua sugestão ajuda a melhorar nosso servidor!' });
-
-    const button = new ButtonBuilder()
-        .setCustomId('suggest-button')
-        .setLabel('Enviar Sugestão')
-        .setStyle(ButtonStyle.Success)
-        .setEmoji('💡');
-
-    const row = new ActionRowBuilder().addComponents(button);
-
-    await interaction.reply({ embeds: [embed], components: [row], ephemeral: true });
-}
-
-async function handleSuggestionModal(interaction) {
-    const modal = new ModalBuilder()
-        .setCustomId('suggestion-modal')
-        .setTitle('Enviar Sugestão');
-
-    const suggestionInput = new TextInputBuilder()
-        .setCustomId('suggestion-content')
-        .setLabel('Qual é sua sugestão?')
-        .setPlaceholder('Descreva sua sugestão de forma clara e detalhada...')
-        .setStyle(TextInputStyle.Paragraph)
-        .setRequired(true)
-        .setMaxLength(2000);
-
-    const actionRow = new ActionRowBuilder().addComponents(suggestionInput);
-    modal.addComponents(actionRow);
-
-    await interaction.showModal(modal);
-}
-
-async function handleSuggestionSubmit(interaction) {
-    const suggestionContent = interaction.fields.getTextInputValue('suggestion-content');
-    const user = interaction.user;
-    const guild = interaction.guild;
-
-    // ID do canal de sugestões - ALTERE ESTE ID!
-    const SUGGESTIONS_CHANNEL_ID = '1330959861915058317';
-
-    const suggestionsChannel = guild.channels.cache.get(SUGGESTIONS_CHANNEL_ID);
-    
-    if (!suggestionsChannel) {
-        return await interaction.reply({ 
-            content: '❌ Canal de sugestões não encontrado. Contate um administrador.', 
-            ephemeral: true 
-        });
-    }
-
-    try {
-        // Criar embed da sugestão
-        const suggestionEmbed = new EmbedBuilder()
-            .setTitle('💡 Nova Sugestão')
-            .setDescription(suggestionContent)
-            .addFields(
-                { name: '👤 Sugerido por', value: `${user.tag}`, inline: true },
-                { name: '📅 Data', value: new Date().toLocaleString('pt-BR'), inline: true },
-                { name: '📊 Votos', value: '👍 0 | 👎 0', inline: true }
-            )
-            .setColor(0x9B59B6)
-            .setFooter({ text: `ID: ${Date.now()}` })
-            .setTimestamp();
-
-        // Botões de votação
-        const voteButtons = new ActionRowBuilder().addComponents(
-            new ButtonBuilder()
-                .setCustomId('suggestion-upvote')
-                .setLabel('👍')
-                .setStyle(ButtonStyle.Success),
-            new ButtonBuilder()
-                .setCustomId('suggestion-downvote')
-                .setLabel('👎')
-                .setStyle(ButtonStyle.Danger),
-            new ButtonBuilder()
-                .setCustomId('suggestion-approve')
-                .setLabel('✅ Aprovar')
-                .setStyle(ButtonStyle.Primary),
-            new ButtonBuilder()
-                .setCustomId('suggestion-deny')
-                .setLabel('❌ Recusar')
-                .setStyle(ButtonStyle.Secondary)
-        );
-
-        // Enviar sugestão para o canal
-        const suggestionMessage = await suggestionsChannel.send({ 
-            embeds: [suggestionEmbed], 
-            components: [voteButtons] 
-        });
-
-        // Salvar sugestão no banco de dados
-        const suggestionData = {
-            messageId: suggestionMessage.id,
-            channelId: suggestionsChannel.id,
-            userId: user.id,
-            content: suggestionContent,
-            upvotes: [],
-            downvotes: [],
-            status: 'pending', // pending, approved, denied
-            createdAt: new Date()
-        };
-        suggestionsDB.set(suggestionMessage.id, suggestionData);
-
-        await interaction.reply({ 
-            content: `✅ Sugestão enviada com sucesso! Confira em ${suggestionsChannel}`, 
-            ephemeral: true 
-        });
-
-    } catch (error) {
-        console.error('Erro ao enviar sugestão:', error);
-        await interaction.reply({ 
-            content: '❌ Erro ao enviar sugestão. Tente novamente.', 
-            ephemeral: true 
-        });
-    }
-}
-
+// SISTEMA DE VOTAÇÃO PARA SUGESTÕES
 async function handleSuggestionVote(interaction) {
     const messageId = interaction.message.id;
     const userId = interaction.user.id;
@@ -517,9 +375,19 @@ async function handleSuggestionVote(interaction) {
             suggestionData.reviewedAt = new Date();
             
             // Atualizar embed
-            const approvedEmbed = EmbedBuilder.from(interaction.message.embeds[0])
+            const originalEmbed = interaction.message.embeds[0];
+            const approvedEmbed = new EmbedBuilder()
+                .setTitle(originalEmbed.title)
+                .setDescription(originalEmbed.description)
                 .setColor(0x00FF00)
-                .addFields({ name: '✅ Status', value: 'Aprovado', inline: true });
+                .addFields(
+                    { name: '👤 Sugerido por', value: originalEmbed.fields.find(f => f.name === '👤 Sugerido por')?.value || 'N/A', inline: true },
+                    { name: '📅 Data', value: originalEmbed.fields.find(f => f.name === '📅 Data')?.value || 'N/A', inline: true },
+                    { name: '📊 Votos', value: originalEmbed.fields.find(f => f.name === '📊 Votos')?.value || 'N/A', inline: true },
+                    { name: '📝 Status', value: '✅ Aprovado', inline: true }
+                )
+                .setFooter(originalEmbed.footer)
+                .setTimestamp(originalEmbed.timestamp);
 
             await interaction.message.edit({ 
                 embeds: [approvedEmbed],
@@ -537,9 +405,19 @@ async function handleSuggestionVote(interaction) {
             suggestionData.reviewedAt = new Date();
             
             // Atualizar embed
-            const deniedEmbed = EmbedBuilder.from(interaction.message.embeds[0])
+            const originalEmbed = interaction.message.embeds[0];
+            const deniedEmbed = new EmbedBuilder()
+                .setTitle(originalEmbed.title)
+                .setDescription(originalEmbed.description)
                 .setColor(0xFF0000)
-                .addFields({ name: '❌ Status', value: 'Recusado', inline: true });
+                .addFields(
+                    { name: '👤 Sugerido por', value: originalEmbed.fields.find(f => f.name === '👤 Sugerido por')?.value || 'N/A', inline: true },
+                    { name: '📅 Data', value: originalEmbed.fields.find(f => f.name === '📅 Data')?.value || 'N/A', inline: true },
+                    { name: '📊 Votos', value: originalEmbed.fields.find(f => f.name === '📊 Votos')?.value || 'N/A', inline: true },
+                    { name: '📝 Status', value: '❌ Recusado', inline: true }
+                )
+                .setFooter(originalEmbed.footer)
+                .setTimestamp(originalEmbed.timestamp);
 
             await interaction.message.edit({ 
                 embeds: [deniedEmbed],
@@ -578,12 +456,19 @@ async function handleSuggestionVote(interaction) {
     }
 
     // Atualizar embed com novos votos
-    const updatedEmbed = EmbedBuilder.from(interaction.message.embeds[0])
-        .spliceFields(2, 1, { 
-            name: '📊 Votos', 
-            value: `👍 ${suggestionData.upvotes.length} | 👎 ${suggestionData.downvotes.length}`, 
-            inline: true 
-        });
+    const originalEmbed = interaction.message.embeds[0];
+    const updatedEmbed = new EmbedBuilder()
+        .setTitle(originalEmbed.title)
+        .setDescription(originalEmbed.description)
+        .setColor(originalEmbed.color)
+        .addFields(
+            { name: '👤 Sugerido por', value: originalEmbed.fields.find(f => f.name === '👤 Sugerido por')?.value || 'N/A', inline: true },
+            { name: '📅 Data', value: originalEmbed.fields.find(f => f.name === '📅 Data')?.value || 'N/A', inline: true },
+            { name: '📊 Votos', value: `👍 ${suggestionData.upvotes.length} | 👎 ${suggestionData.downvotes.length}`, inline: true },
+            { name: '📝 Status', value: originalEmbed.fields.find(f => f.name === '📝 Status')?.value || '⏳ Pendente', inline: true }
+        )
+        .setFooter(originalEmbed.footer)
+        .setTimestamp(originalEmbed.timestamp);
 
     await interaction.message.edit({ embeds: [updatedEmbed] });
     suggestionsDB.set(messageId, suggestionData);
@@ -593,14 +478,6 @@ async function handleSuggestionVote(interaction) {
         ephemeral: true 
     });
 }
-
-// Adicione este handler para o modal de sugestões
-if (interaction.isModalSubmit() && interaction.customId === 'suggestion-modal') {
-    await handleSuggestionSubmit(interaction);
-    return;
-}
-
-// ... (o resto das funções permanecem iguais: handleTicketButtons, notifyUser, addMember, claimTicket, transcriptTicket, closeTicket, generateTranscript, calculateDuration)
 
 async function handleTicketButtons(interaction) {
     const ticketData = ticketDB.get(interaction.channel.id);
@@ -987,3 +864,6 @@ function calculateDuration(startDate) {
         return `${minutes}m`;
     }
 }
+
+// Exportar o suggestionsDB para ser usado no comando de sugestão
+module.exports.suggestionsDB = suggestionsDB;
