@@ -15,7 +15,7 @@ module.exports = {
             .addFields(
                 { name: '📋 Comandos Carregados', value: commandList, inline: false },
                 { name: '🟢 Status', value: 'Online', inline: true },
-                { name: '⏰ Uptime', value: `${Math.floor(interaction.client.uptime / 1000 / 60)} minutos', inline: true },
+                { name: '⏰ Uptime', value: `${Math.floor(interaction.client.uptime / 1000 / 60)} minutos`, inline: true },
                 { name: '👥 Servidores', value: `${interaction.client.guilds.cache.size}`, inline: true }
             )
             .setTimestamp();
