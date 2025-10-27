@@ -76,25 +76,6 @@ module.exports = {
     }
 };
 
-        // Comandos de slash
-        if (interaction.isChatInputCommand()) {
-            const command = interaction.client.commands.get(interaction.commandName);
-
-            if (!command) return;
-
-            try {
-                await command.execute(interaction);
-            } catch (error) {
-                console.error(error);
-                await interaction.reply({ 
-                    content: '❌ Ocorreu um erro ao executar este comando!', 
-                    ephemeral: true 
-                });
-            }
-        }
-    }
-};
-
 async function handleTicketMenu(interaction) {
     const embed = new EmbedBuilder()
         .setTitle('🎫 Selecione o Tipo de Ticket')
@@ -142,7 +123,6 @@ async function handleTicketCreation(interaction) {
     const user = interaction.user;
     const guild = interaction.guild;
 
-    // Configurações para cada tipo de ticket
     const ticketConfigs = {
         denuncias: {
             name: '🚨・denúncia',
@@ -309,16 +289,6 @@ async function handleTicketCreation(interaction) {
         });
     }
 }
-
-async function handleTicketButtons(interaction) {
-    const ticketData = ticketDB.get(interaction.channel.id);
-    
-    if (!ticketData) {
-        return await interaction.reply({ 
-            content: '❌ Este canal não é um ticket válido ou os dados foram perdidos.', 
-            ephemeral: true 
-        });
-    }
 
     // Verificar permissões (apenas staff pode usar os botões)
     const hasPermission = interaction.member.roles.cache.some(role => 
