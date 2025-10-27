@@ -27,7 +27,7 @@ module.exports = {
                 console.log(`❌ Comando não encontrado: ${interaction.commandName}`);
                 return interaction.reply({ 
                     content: '❌ Comando não encontrado!', 
-                    ephemeral: true 
+                    flags: 64 
                 });
             }
 
@@ -39,7 +39,7 @@ module.exports = {
                 console.error(`❌ Erro ao executar comando ${interaction.commandName}:`, error);
                 await interaction.reply({ 
                     content: '❌ Ocorreu um erro ao executar este comando!', 
-                    ephemeral: true 
+                    flags: 64 
                 });
             }
             return;
@@ -75,139 +75,19 @@ module.exports = {
             return;
         }
 
-        // SISTEMA DE VOTAÇÃO PARA SUGESTÕES
-    async function handleSuggestionVote(interaction) {
-    const messageId = interaction.message.id;
-    const userId = interaction.user.id;
-    const suggestionData = suggestionsDB.get(messageId);
-
-    if (!suggestionData) {
-        return await interaction.reply({ 
-            content: '❌ Sugestão não encontrada.', 
-            ephemeral: true 
-        });
-    }
-
-    const isStaff = interaction.member.permissions.has(PermissionsBitField.Flags.ManageMessages);
-
-    // Verificar se é ação de staff (aprovar/recusar)
-    if (interaction.customId === 'suggestion-approve' || interaction.customId === 'suggestion-deny') {
-        if (!isStaff) {
-            return await interaction.reply({ 
-                content: '❌ Apenas staff pode aprovar ou recusar sugestões.', 
-                ephemeral: true 
-            });
+        // Botões de votação nas sugestões
+        if (interaction.isButton() && [
+            'suggestion-upvote',
+            'suggestion-downvote',
+            'suggestion-approve',
+            'suggestion-deny'
+        ].includes(interaction.customId)) {
+            await handleSuggestionVote(interaction);
+            return;
         }
-
-        if (interaction.customId === 'suggestion-approve') {
-            suggestionData.status = 'approved';
-            suggestionData.reviewedBy = userId;
-            suggestionData.reviewedAt = new Date();
-            
-            // Atualizar embed
-            const originalEmbed = interaction.message.embeds[0];
-            const approvedEmbed = new EmbedBuilder()
-                .setTitle(originalEmbed.title)
-                .setDescription(originalEmbed.description)
-                .setColor(0x00FF00)
-                .addFields(
-                    { name: '👤 Sugerido por', value: originalEmbed.fields.find(f => f.name === '👤 Sugerido por')?.value || 'N/A', inline: true },
-                    { name: '📅 Data', value: originalEmbed.fields.find(f => f.name === '📅 Data')?.value || 'N/A', inline: true },
-                    { name: '📊 Votos', value: originalEmbed.fields.find(f => f.name === '📊 Votos')?.value || 'N/A', inline: true },
-                    { name: '📝 Status', value: '✅ Aprovado', inline: true }
-                )
-                .setFooter(originalEmbed.footer ? { text: originalEmbed.footer.text } : null)
-                .setTimestamp();
-
-            await interaction.message.edit({ 
-                embeds: [approvedEmbed],
-                components: [] // Remove botões após aprovação
-            });
-
-            await interaction.reply({ 
-                content: '✅ Sugestão aprovada com sucesso!', 
-                ephemeral: true 
-            });
-
-        } else if (interaction.customId === 'suggestion-deny') {
-            suggestionData.status = 'denied';
-            suggestionData.reviewedBy = userId;
-            suggestionData.reviewedAt = new Date();
-            
-            // Atualizar embed
-            const originalEmbed = interaction.message.embeds[0];
-            const deniedEmbed = new EmbedBuilder()
-                .setTitle(originalEmbed.title)
-                .setDescription(originalEmbed.description)
-                .setColor(0xFF0000)
-                .addFields(
-                    { name: '👤 Sugerido por', value: originalEmbed.fields.find(f => f.name === '👤 Sugerido por')?.value || 'N/A', inline: true },
-                    { name: '📅 Data', value: originalEmbed.fields.find(f => f.name === '📅 Data')?.value || 'N/A', inline: true },
-                    { name: '📊 Votos', value: originalEmbed.fields.find(f => f.name === '📊 Votos')?.value || 'N/A', inline: true },
-                    { name: '📝 Status', value: '❌ Recusado', inline: true }
-                )
-                .setFooter(originalEmbed.footer ? { text: originalEmbed.footer.text } : null)
-                .setTimestamp();
-
-            await interaction.message.edit({ 
-                embeds: [deniedEmbed],
-                components: [] // Remove botões após recusa
-            });
-
-            await interaction.reply({ 
-                content: '❌ Sugestão recusada.', 
-                ephemeral: true 
-            });
-        }
-
-        suggestionsDB.set(messageId, suggestionData);
-        return;
     }
+};
 
-    // Sistema de votação para membros comuns
-    if (suggestionData.status !== 'pending') {
-        return await interaction.reply({ 
-            content: '❌ Esta sugestão já foi revisada pela staff.', 
-            ephemeral: true 
-        });
-    }
-
-    const isUpvote = interaction.customId === 'suggestion-upvote';
-    
-    // Remover votos anteriores do usuário
-    suggestionData.upvotes = suggestionData.upvotes.filter(id => id !== userId);
-    suggestionData.downvotes = suggestionData.downvotes.filter(id => id !== userId);
-
-    // Adicionar novo voto
-    if (isUpvote) {
-        suggestionData.upvotes.push(userId);
-    } else {
-        suggestionData.downvotes.push(userId);
-    }
-
-    // Atualizar embed com novos votos
-    const originalEmbed = interaction.message.embeds[0];
-    const updatedEmbed = new EmbedBuilder()
-        .setTitle(originalEmbed.title)
-        .setDescription(originalEmbed.description)
-        .setColor(originalEmbed.color)
-        .addFields(
-            { name: '👤 Sugerido por', value: originalEmbed.fields.find(f => f.name === '👤 Sugerido por')?.value || 'N/A', inline: true },
-            { name: '📅 Data', value: originalEmbed.fields.find(f => f.name === '📅 Data')?.value || 'N/A', inline: true },
-            { name: '📊 Votos', value: `👍 ${suggestionData.upvotes.length} | 👎 ${suggestionData.downvotes.length}`, inline: true },
-            { name: '📝 Status', value: originalEmbed.fields.find(f => f.name === '📝 Status')?.value || '⏳ Pendente', inline: true }
-        )
-        .setFooter(originalEmbed.footer ? { text: originalEmbed.footer.text } : null)
-        .setTimestamp();
-
-    await interaction.message.edit({ embeds: [updatedEmbed] });
-    suggestionsDB.set(messageId, suggestionData);
-
-    await interaction.reply({ 
-        content: `✅ Seu voto ${isUpvote ? '👍' : '👎'} foi registrado!`, 
-        ephemeral: true 
-    });
-}
 async function handleTicketMenu(interaction) {
     const embed = new EmbedBuilder()
         .setTitle('🎫 Sistema de Tickets')
@@ -253,7 +133,7 @@ async function handleTicketMenu(interaction) {
 
     const row = new ActionRowBuilder().addComponents(selectMenu);
 
-    await interaction.reply({ embeds: [embed], components: [row], ephemeral: true });
+    await interaction.reply({ embeds: [embed], components: [row], flags: 64 });
 }
 
 async function handleTicketCreation(interaction) {
@@ -261,7 +141,7 @@ async function handleTicketCreation(interaction) {
     const user = interaction.user;
     const guild = interaction.guild;
 
-    // CONFIGURAÇÃO DOS CARGOS E CANAL DE TRANSCRIPT - ALTERE OS IDs AQUI!
+    // CONFIGURAÇÃO DOS CARGOS E CANAL DE TRANSCRIPT
     const ticketConfigs = {
         denuncias: {
             name: '🚨・denúncia',
@@ -309,8 +189,8 @@ async function handleTicketCreation(interaction) {
         }
     };
 
-    // ID do canal para salvar transcripts - ALTERE ESTE ID!
-    const TRANSCRIPT_CHANNEL_ID = '1330959870425567262'; // ← ID do canal de transcripts
+    // ID do canal para salvar transcripts
+    const TRANSCRIPT_CHANNEL_ID = '1330959856185774175';
 
     const config = ticketConfigs[selectedOption];
 
@@ -322,7 +202,7 @@ async function handleTicketCreation(interaction) {
     if (existingTicket) {
         return interaction.reply({ 
             content: '❌ Você já possui um ticket aberto! Por favor, aguarde o atendimento no ticket existente.', 
-            ephemeral: true 
+            flags: 64 
         });
     }
 
@@ -453,14 +333,14 @@ async function handleTicketCreation(interaction) {
 
         await interaction.reply({ 
             content: `✅ Ticket criado com sucesso! Acesse: ${ticketChannel}`, 
-            ephemeral: true 
+            flags: 64 
         });
 
     } catch (error) {
         console.error('Erro ao criar ticket:', error);
         await interaction.reply({ 
             content: '❌ Erro ao criar o ticket. Por favor, tente novamente ou contate um administrador.', 
-            ephemeral: true 
+            flags: 64 
         });
     }
 }
@@ -474,7 +354,7 @@ async function handleSuggestionVote(interaction) {
     if (!suggestionData) {
         return await interaction.reply({ 
             content: '❌ Sugestão não encontrada.', 
-            ephemeral: true 
+            flags: 64 
         });
     }
 
@@ -485,7 +365,7 @@ async function handleSuggestionVote(interaction) {
         if (!isStaff) {
             return await interaction.reply({ 
                 content: '❌ Apenas staff pode aprovar ou recusar sugestões.', 
-                ephemeral: true 
+                flags: 64 
             });
         }
 
@@ -506,17 +386,17 @@ async function handleSuggestionVote(interaction) {
                     { name: '📊 Votos', value: originalEmbed.fields.find(f => f.name === '📊 Votos')?.value || 'N/A', inline: true },
                     { name: '📝 Status', value: '✅ Aprovado', inline: true }
                 )
-                .setFooter(originalEmbed.footer)
-                .setTimestamp(originalEmbed.timestamp);
+                .setFooter(originalEmbed.footer ? { text: originalEmbed.footer.text } : null)
+                .setTimestamp();
 
             await interaction.message.edit({ 
                 embeds: [approvedEmbed],
-                components: [] // Remove botões após aprovação
+                components: []
             });
 
             await interaction.reply({ 
                 content: '✅ Sugestão aprovada com sucesso!', 
-                ephemeral: true 
+                flags: 64 
             });
 
         } else if (interaction.customId === 'suggestion-deny') {
@@ -536,17 +416,17 @@ async function handleSuggestionVote(interaction) {
                     { name: '📊 Votos', value: originalEmbed.fields.find(f => f.name === '📊 Votos')?.value || 'N/A', inline: true },
                     { name: '📝 Status', value: '❌ Recusado', inline: true }
                 )
-                .setFooter(originalEmbed.footer)
-                .setTimestamp(originalEmbed.timestamp);
+                .setFooter(originalEmbed.footer ? { text: originalEmbed.footer.text } : null)
+                .setTimestamp();
 
             await interaction.message.edit({ 
                 embeds: [deniedEmbed],
-                components: [] // Remove botões após recusa
+                components: []
             });
 
             await interaction.reply({ 
                 content: '❌ Sugestão recusada.', 
-                ephemeral: true 
+                flags: 64 
             });
         }
 
@@ -558,7 +438,7 @@ async function handleSuggestionVote(interaction) {
     if (suggestionData.status !== 'pending') {
         return await interaction.reply({ 
             content: '❌ Esta sugestão já foi revisada pela staff.', 
-            ephemeral: true 
+            flags: 64 
         });
     }
 
@@ -587,15 +467,15 @@ async function handleSuggestionVote(interaction) {
             { name: '📊 Votos', value: `👍 ${suggestionData.upvotes.length} | 👎 ${suggestionData.downvotes.length}`, inline: true },
             { name: '📝 Status', value: originalEmbed.fields.find(f => f.name === '📝 Status')?.value || '⏳ Pendente', inline: true }
         )
-        .setFooter(originalEmbed.footer)
-        .setTimestamp(originalEmbed.timestamp);
+        .setFooter(originalEmbed.footer ? { text: originalEmbed.footer.text } : null)
+        .setTimestamp();
 
     await interaction.message.edit({ embeds: [updatedEmbed] });
     suggestionsDB.set(messageId, suggestionData);
 
     await interaction.reply({ 
         content: `✅ Seu voto ${isUpvote ? '👍' : '👎'} foi registrado!`, 
-        ephemeral: true 
+        flags: 64 
     });
 }
 
@@ -605,7 +485,7 @@ async function handleTicketButtons(interaction) {
     if (!ticketData) {
         return interaction.reply({ 
             content: '❌ Este canal não é um ticket válido ou os dados foram perdidos.', 
-            ephemeral: true 
+            flags: 64 
         });
     }
 
@@ -627,7 +507,7 @@ async function handleTicketButtons(interaction) {
     if (!hasPermission) {
         return interaction.reply({ 
             content: '❌ Você não tem permissão para usar este comando! Apenas staff pode usar os botões do ticket.', 
-            ephemeral: true 
+            flags: 64 
         });
     }
 
@@ -667,11 +547,11 @@ async function notifyUser(interaction, ticketData) {
             content: `${user}`,
             embeds: [notifyEmbed] 
         });
-        await interaction.reply({ content: '✅ Usuário notificado com sucesso!', ephemeral: true });
+        await interaction.reply({ content: '✅ Usuário notificado com sucesso!', flags: 64 });
     } catch (error) {
         await interaction.reply({ 
             content: '❌ Erro ao notificar o usuário. O usuário pode ter saído do servidor.', 
-            ephemeral: true 
+            flags: 64 
         });
     }
 }
@@ -741,7 +621,7 @@ async function handleAddMemberModal(interaction) {
 
         await interaction.reply({ 
             embeds: [errorEmbed],
-            ephemeral: true 
+            flags: 64 
         });
     }
 }
@@ -752,7 +632,7 @@ async function claimTicket(interaction, ticketData) {
             const claimedBy = await interaction.guild.members.fetch(ticketData.claimedBy);
             return interaction.reply({ 
                 content: `❌ Este ticket já foi assumido por ${claimedBy}`, 
-                ephemeral: true 
+                flags: 64 
             });
         } catch (error) {
             // Se não conseguir encontrar o membro, limpa o claimedBy
@@ -774,7 +654,7 @@ async function claimTicket(interaction, ticketData) {
         .setTimestamp();
 
     await interaction.channel.send({ embeds: [claimEmbed] });
-    await interaction.reply({ content: '✅ Ticket assumido com sucesso!', ephemeral: true });
+    await interaction.reply({ content: '✅ Ticket assumido com sucesso!', flags: 64 });
 }
 
 async function transcriptTicket(interaction, ticketData) {
@@ -783,14 +663,14 @@ async function transcriptTicket(interaction, ticketData) {
         
         await interaction.reply({ 
             content: '📄 Transcript gerado (visualização):\n```' + transcript.substring(0, 1500) + '...```',
-            ephemeral: true 
+            flags: 64 
         });
 
     } catch (error) {
         console.error('Erro ao gerar transcript:', error);
         await interaction.reply({ 
             content: '❌ Erro ao gerar transcript.', 
-            ephemeral: true 
+            flags: 64 
         });
     }
 }
@@ -799,7 +679,7 @@ async function closeTicket(interaction, ticketData) {
     if (ticketData.closed) {
         return interaction.reply({ 
             content: '❌ Este ticket já está fechado.', 
-            ephemeral: true 
+            flags: 64 
         });
     }
 
@@ -917,7 +797,7 @@ async function closeTicket(interaction, ticketData) {
     ticketData.closedBy = interaction.user.id;
     ticketDB.set(interaction.channel.id, ticketData);
 
-    await interaction.reply({ content: '✅ Ticket fechado com sucesso! O canal será deletado em 10 segundos...', ephemeral: true });
+    await interaction.reply({ content: '✅ Ticket fechado com sucesso! O canal será deletado em 10 segundos...', flags: 64 });
 
     // Fechar canal após 10 segundos
     setTimeout(async () => {
@@ -940,7 +820,7 @@ async function generateTranscript(channel, ticketData) {
 
     try {
         let messages = await channel.messages.fetch({ limit: 100 });
-        messages = messages.reverse(); // Ordem cronológica
+        messages = messages.reverse();
 
         messages.forEach(message => {
             const timestamp = new Date(message.createdTimestamp).toLocaleString('pt-BR');
@@ -949,12 +829,10 @@ async function generateTranscript(channel, ticketData) {
             
             transcript += `[${timestamp}] ${author}: ${content}\n`;
             
-            // Adicionar anexos se houver
             if (message.attachments.size > 0) {
                 transcript += `[ANEXOS]: ${message.attachments.map(att => att.url).join(', ')}\n`;
             }
             
-            // Adicionar embeds se houver
             if (message.embeds.length > 0) {
                 transcript += `[EMBEDS]: ${message.embeds.length} embed(s)\n`;
             }
