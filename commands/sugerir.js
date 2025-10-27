@@ -15,7 +15,7 @@ module.exports = {
         const guild = interaction.guild;
 
         // ID do canal de sugestões - ALTERE ESTE ID!
-        const SUGGESTIONS_CHANNEL_ID = 'ID_DO_CANAL_SUGESTOES';
+        const SUGGESTIONS_CHANNEL_ID = '1330959861915058317';
 
         const suggestionsChannel = guild.channels.cache.get(SUGGESTIONS_CHANNEL_ID);
         
