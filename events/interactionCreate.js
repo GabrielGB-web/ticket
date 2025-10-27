@@ -12,6 +12,7 @@ const {
 } = require('discord.js');
 
 const ticketDB = new Map();
+const suggestionsDB = new Map();
 
 module.exports = {
     name: 'interactionCreate',
@@ -73,19 +74,40 @@ module.exports = {
             await handleAddMemberModal(interaction);
             return;
         }
+
+        // Botão para sugerir
+        if (interaction.isButton() && interaction.customId === 'suggest-button') {
+            await handleSuggestionModal(interaction);
+            return;
+        }
+
+        // Botões de votação nas sugestões
+        if (interaction.isButton() && [
+            'suggestion-upvote',
+            'suggestion-downvote',
+            'suggestion-approve',
+            'suggestion-deny'
+        ].includes(interaction.customId)) {
+            await handleSuggestionVote(interaction);
+            return;
+        }
     }
 };
 
 async function handleTicketMenu(interaction) {
     const embed = new EmbedBuilder()
-        .setTitle('🎫 Selecione o Tipo de Ticket')
+        .setTitle('🎫 Sistema de Atendimento')
         .setDescription('Escolha abaixo o tipo de atendimento que você precisa:')
         .setColor(0x0099FF)
+        .addFields(
+            { name: '🎫 Tickets', value: 'Atendimento personalizado com a equipe', inline: true },
+            { name: '💡 Sugestões', value: 'Envie e vote em sugestões', inline: true }
+        )
         .setFooter({ text: 'Selecione uma opção no menu abaixo' });
 
     const selectMenu = new StringSelectMenuBuilder()
         .setCustomId('ticket-select')
-        .setPlaceholder('Selecione o tipo de ticket')
+        .setPlaceholder('Selecione o tipo de atendimento')
         .addOptions([
             {
                 label: 'Denúncias',
@@ -110,6 +132,12 @@ async function handleTicketMenu(interaction) {
                 description: 'Comunicação direta com a administração',
                 value: 'ceo',
                 emoji: '👑'
+            },
+            {
+                label: 'Sugestão',
+                description: 'Enviar uma sugestão para o servidor',
+                value: 'sugestao',
+                emoji: '💡'
             }
         ]);
 
@@ -119,11 +147,17 @@ async function handleTicketMenu(interaction) {
 }
 
 async function handleTicketCreation(interaction) {
-    const ticketType = interaction.values[0];
+    const selectedOption = interaction.values[0];
     const user = interaction.user;
     const guild = interaction.guild;
 
-    // CONFIGURAÇÃO DOS CARGOS E CANAL DE TRANSCRIPT - ALTERE OS IDs AQUI!
+    // Se for sugestão, redireciona para o sistema de sugestões
+    if (selectedOption === 'sugestao') {
+        await handleSuggestionButton(interaction);
+        return;
+    }
+
+    // CONFIGURAÇÃO DOS CARGOS E CANAIS - ALTERE OS IDs AQUI!
     const ticketConfigs = {
         denuncias: {
             name: '🚨・denúncia',
@@ -164,17 +198,18 @@ async function handleTicketCreation(interaction) {
             categoryName: '👑 CEO',
             staffRole: 'CEO',
             staffRoleIds: [
-                '1330959853644025858',  // ← CEO
-                '1330959853644025864' // ← Diretor Geral
+                '1330959853644025858', // ← CEO
+                '1330959853644025864'  // ← Diretor Geral
             ],
             color: 0xFFD700
         }
     };
 
-    // ID do canal para salvar transcripts - ALTERE ESTE ID!
-    const TRANSCRIPT_CHANNEL_ID = '1330959856185774175'; // ← ID do canal de transcripts
+    // IDs DOS CANAIS - ALTERE ESTES IDs!
+    const TRANSCRIPT_CHANNEL_ID = '1330959870425567262'; // ← ID do canal de transcripts
+    const SUGGESTIONS_CHANNEL_ID = '1330959861915058317'; // ← ID do canal de sugestões
 
-    const config = ticketConfigs[ticketType];
+    const config = ticketConfigs[selectedOption];
 
     // Verificar se já existe ticket aberto
     const existingTicket = Array.from(ticketDB.values()).find(
@@ -212,7 +247,7 @@ async function handleTicketCreation(interaction) {
             name: `${config.name}-${user.username}`.toLowerCase().slice(0, 100),
             type: ChannelType.GuildText,
             parent: category.id,
-            topic: `Ticket de ${ticketType} - Aberto por: ${user.tag} | ${new Date().toLocaleString('pt-BR')}`,
+            topic: `Ticket de ${selectedOption} - Aberto por: ${user.tag} | ${new Date().toLocaleString('pt-BR')}`,
             permissionOverwrites: [
                 {
                     id: guild.id,
@@ -248,28 +283,6 @@ async function handleTicketCreation(interaction) {
                     console.log(`✅ Permissões dadas para: ${staffRole.name}`);
                 }
             }
-        } else {
-            // Fallback para sistema antigo (um cargo apenas)
-            let staffRole;
-            if (config.staffRoleId) {
-                staffRole = guild.roles.cache.get(config.staffRoleId);
-            }
-            
-            if (!staffRole) {
-                staffRole = guild.roles.cache.find(role => role.name === config.staffRole);
-            }
-
-            if (staffRole) {
-                await ticketChannel.permissionOverwrites.edit(staffRole, {
-                    ViewChannel: true,
-                    SendMessages: true,
-                    ReadMessageHistory: true,
-                    ManageMessages: true,
-                    ManageChannels: true,
-                    EmbedLinks: true,
-                    AttachFiles: true
-                });
-            }
         }
 
         // Salvar no banco de dados
@@ -277,7 +290,7 @@ async function handleTicketCreation(interaction) {
             channelId: ticketChannel.id,
             userId: user.id,
             guildId: guild.id,
-            type: ticketType,
+            type: selectedOption,
             staffRole: config.staffRole,
             staffRoleIds: config.staffRoleIds,
             transcriptChannelId: TRANSCRIPT_CHANNEL_ID,
@@ -289,11 +302,11 @@ async function handleTicketCreation(interaction) {
 
         // Embed do ticket
         const ticketEmbed = new EmbedBuilder()
-            .setTitle(`Ticket - ${ticketType.toUpperCase()}`)
+            .setTitle(`Ticket - ${selectedOption.toUpperCase()}`)
             .setDescription(`Olá ${user}! A equipe de suporte irá te ajudar em breve.\n\nPor favor, descreva seu problema detalhadamente.`)
             .addFields(
                 { name: '👤 Aberto por', value: `${user.tag} (${user.id})`, inline: true },
-                { name: '🎫 Tipo', value: ticketType, inline: true },
+                { name: '🎫 Tipo', value: selectedOption, inline: true },
                 { name: '📅 Data', value: new Date().toLocaleString('pt-BR'), inline: true }
             )
             .setColor(config.color)
@@ -327,13 +340,6 @@ async function handleTicketCreation(interaction) {
         let roleMentions = '';
         if (config.staffRoleIds && config.staffRoleIds.length > 0) {
             roleMentions = config.staffRoleIds.map(roleId => `<@&${roleId}>`).join(' ');
-        } else {
-            // Fallback para sistema antigo
-            const staffRole = guild.roles.cache.get(config.staffRoleId) || 
-                             guild.roles.cache.find(role => role.name === config.staffRole);
-            if (staffRole) {
-                roleMentions = `<@&${staffRole.id}>`;
-            }
         }
 
         await ticketChannel.send({ 
@@ -356,6 +362,246 @@ async function handleTicketCreation(interaction) {
     }
 }
 
+// SISTEMA DE SUGESTÕES
+async function handleSuggestionButton(interaction) {
+    const embed = new EmbedBuilder()
+        .setTitle('💡 Sistema de Sugestões')
+        .setDescription('Clique no botão abaixo para enviar uma sugestão para o servidor!')
+        .addFields(
+            { name: '📝 Como funciona?', value: '• Sua sugestão será enviada para o canal de sugestões\n• A comunidade poderá votar 👍/👎\n• A staff irá analisar as mais votadas', inline: false },
+            { name: '💡 Dicas', value: '• Seja claro e objetivo\n• Explique os benefícios da sugestão\n• Verifique se já não foi sugerido antes', inline: false }
+        )
+        .setColor(0x9B59B6)
+        .setFooter({ text: 'Sua sugestão ajuda a melhorar nosso servidor!' });
+
+    const button = new ButtonBuilder()
+        .setCustomId('suggest-button')
+        .setLabel('Enviar Sugestão')
+        .setStyle(ButtonStyle.Success)
+        .setEmoji('💡');
+
+    const row = new ActionRowBuilder().addComponents(button);
+
+    await interaction.reply({ embeds: [embed], components: [row], ephemeral: true });
+}
+
+async function handleSuggestionModal(interaction) {
+    const modal = new ModalBuilder()
+        .setCustomId('suggestion-modal')
+        .setTitle('Enviar Sugestão');
+
+    const suggestionInput = new TextInputBuilder()
+        .setCustomId('suggestion-content')
+        .setLabel('Qual é sua sugestão?')
+        .setPlaceholder('Descreva sua sugestão de forma clara e detalhada...')
+        .setStyle(TextInputStyle.Paragraph)
+        .setRequired(true)
+        .setMaxLength(2000);
+
+    const actionRow = new ActionRowBuilder().addComponents(suggestionInput);
+    modal.addComponents(actionRow);
+
+    await interaction.showModal(modal);
+}
+
+async function handleSuggestionSubmit(interaction) {
+    const suggestionContent = interaction.fields.getTextInputValue('suggestion-content');
+    const user = interaction.user;
+    const guild = interaction.guild;
+
+    // ID do canal de sugestões - ALTERE ESTE ID!
+    const SUGGESTIONS_CHANNEL_ID = '1330959861915058317';
+
+    const suggestionsChannel = guild.channels.cache.get(SUGGESTIONS_CHANNEL_ID);
+    
+    if (!suggestionsChannel) {
+        return await interaction.reply({ 
+            content: '❌ Canal de sugestões não encontrado. Contate um administrador.', 
+            ephemeral: true 
+        });
+    }
+
+    try {
+        // Criar embed da sugestão
+        const suggestionEmbed = new EmbedBuilder()
+            .setTitle('💡 Nova Sugestão')
+            .setDescription(suggestionContent)
+            .addFields(
+                { name: '👤 Sugerido por', value: `${user.tag}`, inline: true },
+                { name: '📅 Data', value: new Date().toLocaleString('pt-BR'), inline: true },
+                { name: '📊 Votos', value: '👍 0 | 👎 0', inline: true }
+            )
+            .setColor(0x9B59B6)
+            .setFooter({ text: `ID: ${Date.now()}` })
+            .setTimestamp();
+
+        // Botões de votação
+        const voteButtons = new ActionRowBuilder().addComponents(
+            new ButtonBuilder()
+                .setCustomId('suggestion-upvote')
+                .setLabel('👍')
+                .setStyle(ButtonStyle.Success),
+            new ButtonBuilder()
+                .setCustomId('suggestion-downvote')
+                .setLabel('👎')
+                .setStyle(ButtonStyle.Danger),
+            new ButtonBuilder()
+                .setCustomId('suggestion-approve')
+                .setLabel('✅ Aprovar')
+                .setStyle(ButtonStyle.Primary),
+            new ButtonBuilder()
+                .setCustomId('suggestion-deny')
+                .setLabel('❌ Recusar')
+                .setStyle(ButtonStyle.Secondary)
+        );
+
+        // Enviar sugestão para o canal
+        const suggestionMessage = await suggestionsChannel.send({ 
+            embeds: [suggestionEmbed], 
+            components: [voteButtons] 
+        });
+
+        // Salvar sugestão no banco de dados
+        const suggestionData = {
+            messageId: suggestionMessage.id,
+            channelId: suggestionsChannel.id,
+            userId: user.id,
+            content: suggestionContent,
+            upvotes: [],
+            downvotes: [],
+            status: 'pending', // pending, approved, denied
+            createdAt: new Date()
+        };
+        suggestionsDB.set(suggestionMessage.id, suggestionData);
+
+        await interaction.reply({ 
+            content: `✅ Sugestão enviada com sucesso! Confira em ${suggestionsChannel}`, 
+            ephemeral: true 
+        });
+
+    } catch (error) {
+        console.error('Erro ao enviar sugestão:', error);
+        await interaction.reply({ 
+            content: '❌ Erro ao enviar sugestão. Tente novamente.', 
+            ephemeral: true 
+        });
+    }
+}
+
+async function handleSuggestionVote(interaction) {
+    const messageId = interaction.message.id;
+    const userId = interaction.user.id;
+    const suggestionData = suggestionsDB.get(messageId);
+
+    if (!suggestionData) {
+        return await interaction.reply({ 
+            content: '❌ Sugestão não encontrada.', 
+            ephemeral: true 
+        });
+    }
+
+    const isStaff = interaction.member.permissions.has(PermissionsBitField.Flags.ManageMessages);
+
+    // Verificar se é ação de staff (aprovar/recusar)
+    if (interaction.customId === 'suggestion-approve' || interaction.customId === 'suggestion-deny') {
+        if (!isStaff) {
+            return await interaction.reply({ 
+                content: '❌ Apenas staff pode aprovar ou recusar sugestões.', 
+                ephemeral: true 
+            });
+        }
+
+        if (interaction.customId === 'suggestion-approve') {
+            suggestionData.status = 'approved';
+            suggestionData.reviewedBy = userId;
+            suggestionData.reviewedAt = new Date();
+            
+            // Atualizar embed
+            const approvedEmbed = EmbedBuilder.from(interaction.message.embeds[0])
+                .setColor(0x00FF00)
+                .addFields({ name: '✅ Status', value: 'Aprovado', inline: true });
+
+            await interaction.message.edit({ 
+                embeds: [approvedEmbed],
+                components: [] // Remove botões após aprovação
+            });
+
+            await interaction.reply({ 
+                content: '✅ Sugestão aprovada com sucesso!', 
+                ephemeral: true 
+            });
+
+        } else if (interaction.customId === 'suggestion-deny') {
+            suggestionData.status = 'denied';
+            suggestionData.reviewedBy = userId;
+            suggestionData.reviewedAt = new Date();
+            
+            // Atualizar embed
+            const deniedEmbed = EmbedBuilder.from(interaction.message.embeds[0])
+                .setColor(0xFF0000)
+                .addFields({ name: '❌ Status', value: 'Recusado', inline: true });
+
+            await interaction.message.edit({ 
+                embeds: [deniedEmbed],
+                components: [] // Remove botões após recusa
+            });
+
+            await interaction.reply({ 
+                content: '❌ Sugestão recusada.', 
+                ephemeral: true 
+            });
+        }
+
+        suggestionsDB.set(messageId, suggestionData);
+        return;
+    }
+
+    // Sistema de votação para membros comuns
+    if (suggestionData.status !== 'pending') {
+        return await interaction.reply({ 
+            content: '❌ Esta sugestão já foi revisada pela staff.', 
+            ephemeral: true 
+        });
+    }
+
+    const isUpvote = interaction.customId === 'suggestion-upvote';
+    
+    // Remover votos anteriores do usuário
+    suggestionData.upvotes = suggestionData.upvotes.filter(id => id !== userId);
+    suggestionData.downvotes = suggestionData.downvotes.filter(id => id !== userId);
+
+    // Adicionar novo voto
+    if (isUpvote) {
+        suggestionData.upvotes.push(userId);
+    } else {
+        suggestionData.downvotes.push(userId);
+    }
+
+    // Atualizar embed com novos votos
+    const updatedEmbed = EmbedBuilder.from(interaction.message.embeds[0])
+        .spliceFields(2, 1, { 
+            name: '📊 Votos', 
+            value: `👍 ${suggestionData.upvotes.length} | 👎 ${suggestionData.downvotes.length}`, 
+            inline: true 
+        });
+
+    await interaction.message.edit({ embeds: [updatedEmbed] });
+    suggestionsDB.set(messageId, suggestionData);
+
+    await interaction.reply({ 
+        content: `✅ Seu voto ${isUpvote ? '👍' : '👎'} foi registrado!`, 
+        ephemeral: true 
+    });
+}
+
+// Adicione este handler para o modal de sugestões
+if (interaction.isModalSubmit() && interaction.customId === 'suggestion-modal') {
+    await handleSuggestionSubmit(interaction);
+    return;
+}
+
+// ... (o resto das funções permanecem iguais: handleTicketButtons, notifyUser, addMember, claimTicket, transcriptTicket, closeTicket, generateTranscript, calculateDuration)
+
 async function handleTicketButtons(interaction) {
     const ticketData = ticketDB.get(interaction.channel.id);
     
@@ -373,17 +619,6 @@ async function handleTicketButtons(interaction) {
     if (ticketData.staffRoleIds && ticketData.staffRoleIds.length > 0) {
         hasPermission = ticketData.staffRoleIds.some(roleId => 
             interaction.member.roles.cache.has(roleId)
-        );
-    } 
-    // Se não encontrou por IDs, verificar por ID único (sistema antigo)
-    else if (ticketData.staffRoleId) {
-        hasPermission = interaction.member.roles.cache.has(ticketData.staffRoleId);
-    }
-
-    // Se ainda não encontrou, verificar por nome do cargo
-    if (!hasPermission) {
-        hasPermission = interaction.member.roles.cache.some(role => 
-            role.name === ticketData.staffRole
         );
     }
 
