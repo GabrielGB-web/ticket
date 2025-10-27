@@ -24,7 +24,7 @@ module.exports = {
 
             if (!command) {
                 console.log(`❌ Comando não encontrado: ${interaction.commandName}`);
-                return await interaction.reply({ 
+                return interaction.reply({ 
                     content: '❌ Comando não encontrado!', 
                     ephemeral: true 
                 });
@@ -158,7 +158,7 @@ async function handleTicketCreation(interaction) {
     );
 
     if (existingTicket) {
-        return await interaction.reply({ 
+        return interaction.reply({ 
             content: '❌ Você já possui um ticket aberto! Por favor, aguarde o atendimento no ticket existente.', 
             ephemeral: true 
         });
@@ -290,13 +290,23 @@ async function handleTicketCreation(interaction) {
     }
 }
 
+async function handleTicketButtons(interaction) {
+    const ticketData = ticketDB.get(interaction.channel.id);
+    
+    if (!ticketData) {
+        return interaction.reply({ 
+            content: '❌ Este canal não é um ticket válido ou os dados foram perdidos.', 
+            ephemeral: true 
+        });
+    }
+
     // Verificar permissões (apenas staff pode usar os botões)
     const hasPermission = interaction.member.roles.cache.some(role => 
         role.name === ticketData.staffRole || interaction.member.permissions.has(PermissionsBitField.Flags.Administrator)
     );
 
     if (!hasPermission) {
-        return await interaction.reply({ 
+        return interaction.reply({ 
             content: '❌ Você não tem permissão para usar este comando! Apenas staff pode usar os botões do ticket.', 
             ephemeral: true 
         });
@@ -421,7 +431,7 @@ async function claimTicket(interaction, ticketData) {
     if (ticketData.claimedBy) {
         try {
             const claimedBy = await interaction.guild.members.fetch(ticketData.claimedBy);
-            return await interaction.reply({ 
+            return interaction.reply({ 
                 content: `❌ Este ticket já foi assumido por ${claimedBy}`, 
                 ephemeral: true 
             });
@@ -450,7 +460,6 @@ async function claimTicket(interaction, ticketData) {
 
 async function transcriptTicket(interaction, ticketData) {
     // Função simplificada para transcript
-    // Em produção, implemente um sistema completo de transcript
     try {
         const messages = await interaction.channel.messages.fetch({ limit: 100 });
         let transcript = `Transcript do Ticket - ${ticketData.type}\n`;
@@ -464,7 +473,6 @@ async function transcriptTicket(interaction, ticketData) {
             transcript += `[${timestamp}] ${message.author.tag}: ${message.content}\n`;
         });
 
-        // Em produção, salve em um arquivo e envie para um canal de logs
         await interaction.reply({ 
             content: '📄 Transcript gerado (funcionalidade básica). Em produção, isso salvaria em um arquivo.',
             ephemeral: true 
@@ -483,7 +491,7 @@ async function transcriptTicket(interaction, ticketData) {
 
 async function closeTicket(interaction, ticketData) {
     if (ticketData.closed) {
-        return await interaction.reply({ 
+        return interaction.reply({ 
             content: '❌ Este ticket já está fechado.', 
             ephemeral: true 
         });
