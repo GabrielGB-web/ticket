@@ -75,19 +75,139 @@ module.exports = {
             return;
         }
 
-        // Botões de votação nas sugestões
-        if (interaction.isButton() && [
-            'suggestion-upvote',
-            'suggestion-downvote',
-            'suggestion-approve',
-            'suggestion-deny'
-        ].includes(interaction.customId)) {
-            await handleSuggestionVote(interaction);
-            return;
-        }
-    }
-};
+        // SISTEMA DE VOTAÇÃO PARA SUGESTÕES
+    async function handleSuggestionVote(interaction) {
+    const messageId = interaction.message.id;
+    const userId = interaction.user.id;
+    const suggestionData = suggestionsDB.get(messageId);
 
+    if (!suggestionData) {
+        return await interaction.reply({ 
+            content: '❌ Sugestão não encontrada.', 
+            ephemeral: true 
+        });
+    }
+
+    const isStaff = interaction.member.permissions.has(PermissionsBitField.Flags.ManageMessages);
+
+    // Verificar se é ação de staff (aprovar/recusar)
+    if (interaction.customId === 'suggestion-approve' || interaction.customId === 'suggestion-deny') {
+        if (!isStaff) {
+            return await interaction.reply({ 
+                content: '❌ Apenas staff pode aprovar ou recusar sugestões.', 
+                ephemeral: true 
+            });
+        }
+
+        if (interaction.customId === 'suggestion-approve') {
+            suggestionData.status = 'approved';
+            suggestionData.reviewedBy = userId;
+            suggestionData.reviewedAt = new Date();
+            
+            // Atualizar embed
+            const originalEmbed = interaction.message.embeds[0];
+            const approvedEmbed = new EmbedBuilder()
+                .setTitle(originalEmbed.title)
+                .setDescription(originalEmbed.description)
+                .setColor(0x00FF00)
+                .addFields(
+                    { name: '👤 Sugerido por', value: originalEmbed.fields.find(f => f.name === '👤 Sugerido por')?.value || 'N/A', inline: true },
+                    { name: '📅 Data', value: originalEmbed.fields.find(f => f.name === '📅 Data')?.value || 'N/A', inline: true },
+                    { name: '📊 Votos', value: originalEmbed.fields.find(f => f.name === '📊 Votos')?.value || 'N/A', inline: true },
+                    { name: '📝 Status', value: '✅ Aprovado', inline: true }
+                )
+                .setFooter(originalEmbed.footer ? { text: originalEmbed.footer.text } : null)
+                .setTimestamp();
+
+            await interaction.message.edit({ 
+                embeds: [approvedEmbed],
+                components: [] // Remove botões após aprovação
+            });
+
+            await interaction.reply({ 
+                content: '✅ Sugestão aprovada com sucesso!', 
+                ephemeral: true 
+            });
+
+        } else if (interaction.customId === 'suggestion-deny') {
+            suggestionData.status = 'denied';
+            suggestionData.reviewedBy = userId;
+            suggestionData.reviewedAt = new Date();
+            
+            // Atualizar embed
+            const originalEmbed = interaction.message.embeds[0];
+            const deniedEmbed = new EmbedBuilder()
+                .setTitle(originalEmbed.title)
+                .setDescription(originalEmbed.description)
+                .setColor(0xFF0000)
+                .addFields(
+                    { name: '👤 Sugerido por', value: originalEmbed.fields.find(f => f.name === '👤 Sugerido por')?.value || 'N/A', inline: true },
+                    { name: '📅 Data', value: originalEmbed.fields.find(f => f.name === '📅 Data')?.value || 'N/A', inline: true },
+                    { name: '📊 Votos', value: originalEmbed.fields.find(f => f.name === '📊 Votos')?.value || 'N/A', inline: true },
+                    { name: '📝 Status', value: '❌ Recusado', inline: true }
+                )
+                .setFooter(originalEmbed.footer ? { text: originalEmbed.footer.text } : null)
+                .setTimestamp();
+
+            await interaction.message.edit({ 
+                embeds: [deniedEmbed],
+                components: [] // Remove botões após recusa
+            });
+
+            await interaction.reply({ 
+                content: '❌ Sugestão recusada.', 
+                ephemeral: true 
+            });
+        }
+
+        suggestionsDB.set(messageId, suggestionData);
+        return;
+    }
+
+    // Sistema de votação para membros comuns
+    if (suggestionData.status !== 'pending') {
+        return await interaction.reply({ 
+            content: '❌ Esta sugestão já foi revisada pela staff.', 
+            ephemeral: true 
+        });
+    }
+
+    const isUpvote = interaction.customId === 'suggestion-upvote';
+    
+    // Remover votos anteriores do usuário
+    suggestionData.upvotes = suggestionData.upvotes.filter(id => id !== userId);
+    suggestionData.downvotes = suggestionData.downvotes.filter(id => id !== userId);
+
+    // Adicionar novo voto
+    if (isUpvote) {
+        suggestionData.upvotes.push(userId);
+    } else {
+        suggestionData.downvotes.push(userId);
+    }
+
+    // Atualizar embed com novos votos
+    const originalEmbed = interaction.message.embeds[0];
+    const updatedEmbed = new EmbedBuilder()
+        .setTitle(originalEmbed.title)
+        .setDescription(originalEmbed.description)
+        .setColor(originalEmbed.color)
+        .addFields(
+            { name: '👤 Sugerido por', value: originalEmbed.fields.find(f => f.name === '👤 Sugerido por')?.value || 'N/A', inline: true },
+            { name: '📅 Data', value: originalEmbed.fields.find(f => f.name === '📅 Data')?.value || 'N/A', inline: true },
+            { name: '📊 Votos', value: `👍 ${suggestionData.upvotes.length} | 👎 ${suggestionData.downvotes.length}`, inline: true },
+            { name: '📝 Status', value: originalEmbed.fields.find(f => f.name === '📝 Status')?.value || '⏳ Pendente', inline: true }
+        )
+        .setFooter(originalEmbed.footer ? { text: originalEmbed.footer.text } : null)
+        .setTimestamp();
+
+    await interaction.message.edit({ embeds: [updatedEmbed] });
+    suggestionsDB.set(messageId, suggestionData);
+
+    await interaction.reply({ 
+        content: `✅ Seu voto ${isUpvote ? '👍' : '👎'} foi registrado!`, 
+        ephemeral: true 
+    });
+}
 async function handleTicketMenu(interaction) {
     const embed = new EmbedBuilder()
         .setTitle('🎫 Sistema de Tickets')
