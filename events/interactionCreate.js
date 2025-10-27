@@ -123,32 +123,56 @@ async function handleTicketCreation(interaction) {
     const user = interaction.user;
     const guild = interaction.guild;
 
+    // CONFIGURAÇÃO DOS CARGOS E CANAL DE TRANSCRIPT - ALTERE OS IDs AQUI!
     const ticketConfigs = {
         denuncias: {
             name: '🚨・denúncia',
             categoryName: '🚨 Denúncias',
             staffRole: 'Staff Denúncias',
+            staffRoleIds: [
+                '1330959853644025858', // ← Ceo
+                '1330959853644025864', // ← Diretor Geral
+                '1330959853820182565',  // ← Administrador
+                '1330959853820182566',  // ← Moderador
+                '1330959853878771905'  // ← Equipe Denúncia
+            ],
             color: 0xFF0000
         },
         suporte: {
             name: '❓・suporte',
             categoryName: '❓ Suporte',
             staffRole: 'Staff Suporte',
+            staffRoleIds: [
+                '1330959853644025858', // ← CEO
+                '1330959853644025864', // ← Diretor Geral
+                '1330959853820182567'  // ← Suporte
+            ],
             color: 0x0099FF
         },
         loja: {
             name: '🛒・loja',
             categoryName: '🛒 Loja',
             staffRole: 'Staff Loja',
+            staffRoleIds: [
+                '1330959853644025858', // ← CEO
+                '1330959853644025864'  // ← Diretor Geral
+            ],
             color: 0xFFA500
         },
         ceo: {
             name: '👑・ceo',
             categoryName: '👑 CEO',
             staffRole: 'CEO',
+            staffRoleIds: [
+                '1330959853644025858',  // ← CEO
+                '1330959853644025864' // ← Diretor Geral
+            ],
             color: 0xFFD700
         }
     };
+
+    // ID do canal para salvar transcripts - ALTERE ESTE ID!
+    const TRANSCRIPT_CHANNEL_ID = '1330959856185774175'; // ← ID do canal de transcripts
 
     const config = ticketConfigs[ticketType];
 
@@ -207,18 +231,45 @@ async function handleTicketCreation(interaction) {
             ]
         });
 
-        // Adicionar permissões para staff
-        const staffRole = guild.roles.cache.find(role => role.name === config.staffRole);
-        if (staffRole) {
-            await ticketChannel.permissionOverwrites.edit(staffRole, {
-                ViewChannel: true,
-                SendMessages: true,
-                ReadMessageHistory: true,
-                ManageMessages: true,
-                ManageChannels: true,
-                EmbedLinks: true,
-                AttachFiles: true
-            });
+        // Adicionar permissões para staff (múltiplos cargos)
+        if (config.staffRoleIds && config.staffRoleIds.length > 0) {
+            for (const roleId of config.staffRoleIds) {
+                const staffRole = guild.roles.cache.get(roleId);
+                if (staffRole) {
+                    await ticketChannel.permissionOverwrites.edit(staffRole, {
+                        ViewChannel: true,
+                        SendMessages: true,
+                        ReadMessageHistory: true,
+                        ManageMessages: true,
+                        ManageChannels: true,
+                        EmbedLinks: true,
+                        AttachFiles: true
+                    });
+                    console.log(`✅ Permissões dadas para: ${staffRole.name}`);
+                }
+            }
+        } else {
+            // Fallback para sistema antigo (um cargo apenas)
+            let staffRole;
+            if (config.staffRoleId) {
+                staffRole = guild.roles.cache.get(config.staffRoleId);
+            }
+            
+            if (!staffRole) {
+                staffRole = guild.roles.cache.find(role => role.name === config.staffRole);
+            }
+
+            if (staffRole) {
+                await ticketChannel.permissionOverwrites.edit(staffRole, {
+                    ViewChannel: true,
+                    SendMessages: true,
+                    ReadMessageHistory: true,
+                    ManageMessages: true,
+                    ManageChannels: true,
+                    EmbedLinks: true,
+                    AttachFiles: true
+                });
+            }
         }
 
         // Salvar no banco de dados
@@ -228,6 +279,8 @@ async function handleTicketCreation(interaction) {
             guildId: guild.id,
             type: ticketType,
             staffRole: config.staffRole,
+            staffRoleIds: config.staffRoleIds,
+            transcriptChannelId: TRANSCRIPT_CHANNEL_ID,
             closed: false,
             claimedBy: null,
             createdAt: new Date()
@@ -270,8 +323,21 @@ async function handleTicketCreation(interaction) {
                 .setStyle(ButtonStyle.Danger)
         );
 
+        // Criar menção para todos os cargos staff
+        let roleMentions = '';
+        if (config.staffRoleIds && config.staffRoleIds.length > 0) {
+            roleMentions = config.staffRoleIds.map(roleId => `<@&${roleId}>`).join(' ');
+        } else {
+            // Fallback para sistema antigo
+            const staffRole = guild.roles.cache.get(config.staffRoleId) || 
+                             guild.roles.cache.find(role => role.name === config.staffRole);
+            if (staffRole) {
+                roleMentions = `<@&${staffRole.id}>`;
+            }
+        }
+
         await ticketChannel.send({ 
-            content: `${user} ${staffRole ? `<@&${staffRole.id}>` : ''}\n**Ticket criado com sucesso!**`,
+            content: `${user} ${roleMentions}\n**Ticket criado com sucesso!**`,
             embeds: [ticketEmbed], 
             components: [buttons] 
         });
@@ -301,9 +367,30 @@ async function handleTicketButtons(interaction) {
     }
 
     // Verificar permissões (apenas staff pode usar os botões)
-    const hasPermission = interaction.member.roles.cache.some(role => 
-        role.name === ticketData.staffRole || interaction.member.permissions.has(PermissionsBitField.Flags.Administrator)
-    );
+    let hasPermission = false;
+
+    // Verificar por IDs dos cargos (múltiplos cargos)
+    if (ticketData.staffRoleIds && ticketData.staffRoleIds.length > 0) {
+        hasPermission = ticketData.staffRoleIds.some(roleId => 
+            interaction.member.roles.cache.has(roleId)
+        );
+    } 
+    // Se não encontrou por IDs, verificar por ID único (sistema antigo)
+    else if (ticketData.staffRoleId) {
+        hasPermission = interaction.member.roles.cache.has(ticketData.staffRoleId);
+    }
+
+    // Se ainda não encontrou, verificar por nome do cargo
+    if (!hasPermission) {
+        hasPermission = interaction.member.roles.cache.some(role => 
+            role.name === ticketData.staffRole
+        );
+    }
+
+    // Administradores sempre têm acesso
+    if (!hasPermission) {
+        hasPermission = interaction.member.permissions.has(PermissionsBitField.Flags.Administrator);
+    }
 
     if (!hasPermission) {
         return interaction.reply({ 
@@ -459,26 +546,13 @@ async function claimTicket(interaction, ticketData) {
 }
 
 async function transcriptTicket(interaction, ticketData) {
-    // Função simplificada para transcript
     try {
-        const messages = await interaction.channel.messages.fetch({ limit: 100 });
-        let transcript = `Transcript do Ticket - ${ticketData.type}\n`;
-        transcript += `Aberto por: ${ticketData.userId}\n`;
-        transcript += `Data: ${new Date().toLocaleString('pt-BR')}\n`;
-        transcript += `Canal: ${interaction.channel.name}\n\n`;
-        transcript += 'Mensagens:\n\n';
-
-        messages.reverse().forEach(message => {
-            const timestamp = new Date(message.createdTimestamp).toLocaleString('pt-BR');
-            transcript += `[${timestamp}] ${message.author.tag}: ${message.content}\n`;
-        });
-
+        const transcript = await generateTranscript(interaction.channel, ticketData);
+        
         await interaction.reply({ 
-            content: '📄 Transcript gerado (funcionalidade básica). Em produção, isso salvaria em um arquivo.',
+            content: '📄 Transcript gerado (visualização):\n```' + transcript.substring(0, 1500) + '...```',
             ephemeral: true 
         });
-
-        console.log('Transcript:', transcript); // Apenas para demonstração
 
     } catch (error) {
         console.error('Erro ao gerar transcript:', error);
@@ -495,6 +569,59 @@ async function closeTicket(interaction, ticketData) {
             content: '❌ Este ticket já está fechado.', 
             ephemeral: true 
         });
+    }
+
+    // Gerar transcript antes de fechar
+    try {
+        const transcript = await generateTranscript(interaction.channel, ticketData);
+        
+        // Enviar transcript para o canal específico
+        const transcriptChannel = interaction.guild.channels.cache.get(ticketData.transcriptChannelId);
+        
+        if (transcriptChannel) {
+            const transcriptEmbed = new EmbedBuilder()
+                .setTitle(`📄 Transcript - Ticket ${ticketData.type.toUpperCase()}`)
+                .setDescription(`Transcript do ticket fechado`)
+                .addFields(
+                    { name: '👤 Usuário', value: `<@${ticketData.userId}> (${ticketData.userId})`, inline: true },
+                    { name: '🎫 Tipo', value: ticketData.type, inline: true },
+                    { name: '👤 Fechado por', value: interaction.user.tag, inline: true },
+                    { name: '📅 Data de Abertura', value: ticketData.createdAt.toLocaleString('pt-BR'), inline: true },
+                    { name: '📅 Data de Fechamento', value: new Date().toLocaleString('pt-BR'), inline: true },
+                    { name: '⏰ Duração', value: calculateDuration(ticketData.createdAt), inline: true }
+                )
+                .setColor(0x0099FF)
+                .setTimestamp();
+
+            await transcriptChannel.send({
+                embeds: [transcriptEmbed],
+                files: [{
+                    attachment: Buffer.from(transcript),
+                    name: `transcript-${ticketData.type}-${ticketData.userId}-${Date.now()}.txt`
+                }]
+            });
+            console.log('✅ Transcript enviado para o canal de logs');
+        } else {
+            console.log('❌ Canal de transcript não encontrado');
+        }
+
+        // Enviar transcript para o usuário via DM
+        try {
+            const user = await interaction.client.users.fetch(ticketData.userId);
+            await user.send({
+                content: `📄 **Transcript do seu ticket**\n\nAqui está o histórico completo do seu ticket **${ticketData.type}** que foi fechado.\n\n*Se você tiver alguma dúvida, entre em contato com a staff.*`,
+                files: [{
+                    attachment: Buffer.from(transcript),
+                    name: `transcript-${ticketData.type}-${Date.now()}.txt`
+                }]
+            });
+            console.log('✅ Transcript enviado para o usuário');
+        } catch (userError) {
+            console.log('❌ Não foi possível enviar transcript para o usuário (DM fechada)');
+        }
+
+    } catch (error) {
+        console.error('❌ Erro ao gerar transcript:', error);
     }
 
     const closeEmbed = new EmbedBuilder()
@@ -569,6 +696,49 @@ async function closeTicket(interaction, ticketData) {
             console.error('Erro ao deletar canal:', error);
         }
     }, 10000);
+}
+
+async function generateTranscript(channel, ticketData) {
+    let transcript = `=== TRANSCRIPT DO TICKET ===\n\n`;
+    transcript += `Tipo: ${ticketData.type}\n`;
+    transcript += `Usuário: ${ticketData.userId}\n`;
+    transcript += `Aberto em: ${ticketData.createdAt.toLocaleString('pt-BR')}\n`;
+    transcript += `Canal: ${channel.name}\n`;
+    transcript += `=================================\n\n`;
+
+    try {
+        let messages = await channel.messages.fetch({ limit: 100 });
+        messages = messages.reverse(); // Ordem cronológica
+
+        messages.forEach(message => {
+            const timestamp = new Date(message.createdTimestamp).toLocaleString('pt-BR');
+            const author = message.author.tag;
+            const content = message.content || '(Sem conteúdo de texto)';
+            
+            transcript += `[${timestamp}] ${author}: ${content}\n`;
+            
+            // Adicionar anexos se houver
+            if (message.attachments.size > 0) {
+                transcript += `[ANEXOS]: ${message.attachments.map(att => att.url).join(', ')}\n`;
+            }
+            
+            // Adicionar embeds se houver
+            if (message.embeds.length > 0) {
+                transcript += `[EMBEDS]: ${message.embeds.length} embed(s)\n`;
+            }
+            
+            transcript += '\n';
+        });
+
+        transcript += `\n=================================\n`;
+        transcript += `Ticket fechado em: ${new Date().toLocaleString('pt-BR')}\n`;
+        transcript += `Total de mensagens: ${messages.size}\n`;
+
+    } catch (error) {
+        transcript += `\nERRO AO GERAR TRANSCRIPT: ${error.message}\n`;
+    }
+
+    return transcript;
 }
 
 function calculateDuration(startDate) {
