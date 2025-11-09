@@ -90,6 +90,28 @@ module.exports = {
                 }
             }
 
+            // Notificar o membro sobre a remoção
+            let notificacaoEnviada = false;
+            try {
+                const dmEmbed = new EmbedBuilder()
+                    .setTitle('✅ ADVERTÊNCIA REMOVIDA')
+                    .setColor(0x00FF00)
+                    .addFields(
+                        { name: '🗑️ Advertências Removidas', value: tagsRemovidas.join(', '), inline: true },
+                        { name: '🛡️ Removido por', value: `${staff.tag}`, inline: true },
+                        { name: '📝 Motivo', value: motivo, inline: false },
+                        { name: '⏰ Data', value: new Date().toLocaleString('pt-BR'), inline: true },
+                        { name: '🎉 Status', value: 'Sua advertência foi removida com sucesso!', inline: false }
+                    )
+                    .setFooter({ text: 'Sistema de Advertências - PazCity' })
+                    .setTimestamp();
+
+                await member.send({ embeds: [dmEmbed] });
+                notificacaoEnviada = true;
+            } catch (dmError) {
+                console.log('Não foi possível enviar DM para o membro:', dmError);
+            }
+
             // Enviar para o canal de advertências
             const advertChannel = guild.channels.cache.get(ADVERTENCIAS_CHANNEL_ID);
             
@@ -103,12 +125,20 @@ module.exports = {
                         { name: '🛡️ Removido por', value: `${staff.tag}`, inline: true },
                         { name: '📝 Motivo', value: motivo, inline: false },
                         { name: '⏰ Data', value: new Date().toLocaleString('pt-BR'), inline: true },
-                        { name: '⚡ Ação', value: acaoRealizada, inline: true }
+                        { name: '⚡ Ação', value: acaoRealizada, inline: true },
+                        { name: '📨 Notificação', value: notificacaoEnviada ? '✅ Enviada' : '❌ Não enviada (DM fechada)', inline: true }
                     )
                     .setFooter({ text: 'Sistema de Advertências Automáticas' })
                     .setTimestamp();
 
-                await advertChannel.send({ embeds: [removeEmbed] });
+                const message = await advertChannel.send({ 
+                    content: `${member}`, // Menciona o membro no canal
+                    embeds: [removeEmbed] 
+                });
+
+                // Adicionar reações
+                await message.react('✅');
+                await message.react('🎉');
             }
 
             // Enviar para o canal de LOG
@@ -122,6 +152,7 @@ module.exports = {
                         { name: '🛡️ Staff', value: `${staff.tag} (${staff.id})`, inline: true },
                         { name: '🗑️ Ação', value: `Remoção: ${tagsRemovidas.join(', ')}`, inline: true },
                         { name: '📝 Motivo', value: motivo, inline: false },
+                        { name: '📨 Notificação', value: notificacaoEnviada ? '✅ Enviada' : '❌ Não enviada', inline: true },
                         { name: '⏰ Data', value: new Date().toLocaleString('pt-BR'), inline: true }
                     )
                     .setFooter({ text: 'Sistema de Logs - Advertências' })
@@ -130,8 +161,11 @@ module.exports = {
                 await logChannel.send({ embeds: [logEmbed] });
             }
 
+            let resposta = `✅ Advertência(s) removida(s) com sucesso de ${member.user.tag}!`;
+            resposta += `\n📨 Notificação: ${notificacaoEnviada ? '✅ Enviada' : '❌ DM fechada'}`;
+
             await interaction.reply({ 
-                content: `✅ Advertência(s) removida(s) com sucesso de ${member.user.tag}!`, 
+                content: resposta, 
                 flags: 64 
             });
 
