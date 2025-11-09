@@ -76,6 +76,7 @@ module.exports = {
             let novaAdvertencia = '';
             let acaoTomada = '';
             let isBanimento = false;
+            let advertenciaNumero = 0;
 
             // Lógica das advertências
             if (!temAdv1 && !temAdv2 && !temAdv3) {
@@ -83,12 +84,14 @@ module.exports = {
                 await member.roles.add(ADV1_ROLE_ID);
                 novaAdvertencia = 'Adv1';
                 acaoTomada = 'Primeira advertência aplicada';
+                advertenciaNumero = 1;
                 
             } else if (temAdv1 && !temAdv2 && !temAdv3) {
                 // Segunda advertência
                 await member.roles.add(ADV2_ROLE_ID);
                 novaAdvertencia = 'Adv2';
                 acaoTomada = 'Segunda advertência aplicada';
+                advertenciaNumero = 2;
                 
             } else if (temAdv2 && !temAdv3) {
                 // Terceira advertência - BANIMENTO
@@ -98,6 +101,7 @@ module.exports = {
                 await member.roles.remove([ADV1_ROLE_ID, ADV2_ROLE_ID, ADV3_ROLE_ID]);
                 novaAdvertencia = 'BANIDO';
                 acaoTomada = 'Terceira advertência - MEMBRO BANIDO';
+                advertenciaNumero = 3;
                 
                 // Banir o membro
                 try {
@@ -115,13 +119,39 @@ module.exports = {
                 });
             }
 
+            // Notificar o membro advertido (se não for banimento)
+            let notificacaoEnviada = false;
+            if (!isBanimento) {
+                try {
+                    const dmEmbed = new EmbedBuilder()
+                        .setTitle('🚨 VOCÊ RECEBEU UMA ADVERTÊNCIA')
+                        .setColor(0xFFA500)
+                        .addFields(
+                            { name: '📊 Advertência', value: `${advertenciaNumero}ª Advertência (${novaAdvertencia})`, inline: true },
+                            { name: '🛡️ Aplicada por', value: `${staff.tag}`, inline: true },
+                            { name: '📝 Motivo', value: motivo, inline: false },
+                            { name: '🔗 Prova', value: prova, inline: false },
+                            { name: '⏰ Data', value: new Date().toLocaleString('pt-BR'), inline: true },
+                            { name: '⚠️ Aviso', value: `Você tem ${3 - advertenciaNumero} advertência(s) restante(s) antes do banimento.`, inline: false },
+                            { name: '📞 Recursos', value: 'Caso discorde desta advertência, abra um ticket no canal de tickets para recorrer.', inline: false }
+                        )
+                        .setFooter({ text: 'Sistema de Advertências - PazCity' })
+                        .setTimestamp();
+
+                    await member.send({ embeds: [dmEmbed] });
+                    notificacaoEnviada = true;
+                } catch (dmError) {
+                    console.log('Não foi possível enviar DM para o membro:', dmError);
+                }
+            }
+
             // Enviar para o canal de advertências
             const advertChannel = guild.channels.cache.get(ADVERTENCIAS_CHANNEL_ID);
             
-            if (advertChannel && !isBanimento) {
+            if (advertChannel) {
                 const advertEmbed = new EmbedBuilder()
-                    .setTitle('🚨 ADVERTÊNCIA APLICADA')
-                    .setColor(0xFFA500)
+                    .setTitle(isBanimento ? '🔴 MEMBRO BANIDO' : '🚨 ADVERTÊNCIA APLICADA')
+                    .setColor(isBanimento ? 0xFF0000 : 0xFFA500)
                     .addFields(
                         { name: '👤 Membro', value: `${member.user.tag} (${member.id})`, inline: true },
                         { name: '🚨 Advertência', value: novaAdvertencia, inline: true },
@@ -129,12 +159,22 @@ module.exports = {
                         { name: '📝 Motivo', value: motivo, inline: false },
                         { name: '🔗 Prova', value: prova, inline: false },
                         { name: '⏰ Data', value: new Date().toLocaleString('pt-BR'), inline: true },
-                        { name: '⚡ Ação', value: acaoTomada, inline: true }
+                        { name: '⚡ Ação', value: acaoTomada, inline: true },
+                        { name: '📨 Notificação', value: notificacaoEnviada ? '✅ Enviada' : '❌ Não enviada (DM fechada)', inline: true }
                     )
                     .setFooter({ text: 'Sistema de Advertências Automáticas' })
                     .setTimestamp();
 
-                await advertChannel.send({ embeds: [advertEmbed] });
+                const message = await advertChannel.send({ 
+                    content: isBanimento ? '' : `${member}`, // Menciona o membro no canal
+                    embeds: [advertEmbed] 
+                });
+
+                // Adicionar reações para interação
+                if (!isBanimento) {
+                    await message.react('🚨');
+                    await message.react('⚠️');
+                }
             }
 
             // Enviar para o canal de banidos se for banimento
@@ -171,6 +211,7 @@ module.exports = {
                         { name: '🚨 Ação', value: isBanimento ? 'BANIMENTO' : `Advertência ${novaAdvertencia}`, inline: true },
                         { name: '📝 Motivo', value: motivo, inline: false },
                         { name: '🔗 Prova', value: prova, inline: false },
+                        { name: '📨 Notificação', value: notificacaoEnviada ? '✅ Enviada' : '❌ Não enviada', inline: true },
                         { name: '⏰ Data', value: new Date().toLocaleString('pt-BR'), inline: true }
                     )
                     .setFooter({ text: 'Sistema de Logs - Advertências' })
@@ -179,8 +220,14 @@ module.exports = {
                 await logChannel.send({ embeds: [logEmbed] });
             }
 
+            let resposta = `✅ ${isBanimento ? 'Banimento' : 'Advertência'} **${novaAdvertencia}** aplicada com sucesso para ${member.user.tag}!`;
+            if (!isBanimento) {
+                resposta += `\n📨 Notificação: ${notificacaoEnviada ? '✅ Enviada' : '❌ DM fechada'}`;
+                resposta += `\n⚠️ Restam ${3 - advertenciaNumero} advertência(s) antes do banimento.`;
+            }
+
             await interaction.reply({ 
-                content: `✅ ${isBanimento ? 'Banimento' : 'Advertência'} **${novaAdvertencia}** aplicada com sucesso para ${member.user.tag}!`, 
+                content: resposta, 
                 flags: 64 
             });
 
